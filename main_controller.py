@@ -6,7 +6,7 @@ import json
 
 from scanner.temporal_risk_engine import update_temporal_risk
 
-#  configuration
+# ===================== CONFIG =====================
 
 SCAN_INTERVAL_SECONDS = 120
 ANALYZE_EVERY_N_SCANS = 3
@@ -19,7 +19,7 @@ TEMPORAL_EVENTS_FILE = "temporal_events.json"
 
 FAILURE_BACKOFF_SECONDS = 300  # 5 minutes
 
-# helpers 
+# ===================== HELPERS =====================
 
 def snapshot_count():
     if not os.path.exists(SNAPSHOT_DIR):
@@ -40,12 +40,18 @@ def load_temporal_events():
     if not os.path.exists(TEMPORAL_EVENTS_FILE):
         return []
     try:
-        with open(TEMPORAL_EVENTS_FILE, "r") as f:
+        with open(TEMPORAL_EVENTS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return []
 
-# controller 
+
+def clear_temporal_events():
+    """Consume events exactly once."""
+    with open(TEMPORAL_EVENTS_FILE, "w", encoding="utf-8") as f:
+        json.dump([], f)
+
+# ===================== CONTROLLER =====================
 
 def main():
     print("\n=== Keylogger Detection Controller (Behavioral) ===\n")
@@ -76,7 +82,7 @@ def main():
         scan_count += 1
         print(scan_result.stdout.strip())
 
-        #  temporal analysis 
+        # ---------- TEMPORAL ANALYSIS ----------
         if scan_count % ANALYZE_EVERY_N_SCANS == 0 and snapshot_count() >= 2:
             print("\n[*] Running temporal analyzer...")
             t_result = run_module(TEMPORAL_MODULE)
@@ -87,26 +93,29 @@ def main():
             else:
                 print(t_result.stdout.strip())
 
-                # temporal risk update 
+                # ---------- RISK UPDATE (consume events ONCE) ----------
                 events = load_temporal_events()
-                state = update_temporal_risk(events)
+                if events:
+                    state = update_temporal_risk(events)
+                    clear_temporal_events()
 
-                #  alerting 
-                for pid, info in state.items():
-                    if info["risk_level"] == "HIGH":
-                        print("\n[!!!] HIGH RISK PROCESS DETECTED")
-                        print(f" PID        : {pid}")
-                        print(f" Risk Score : {info['risk_score']}")
-                        print(f" Events     : {dict(info['event_counts'])}")
-                        print("------------------------------------------------")
+                    # ---------- ALERTING ----------
+                    for pid, info in state.items():
+                        if info["risk_level"] == "HIGH":
+                            print("\n[!!!] HIGH RISK PROCESS DETECTED")
+                            print(f" PID        : {pid}")
+                            print(f" Risk Score : {info['risk_score']}")
+                            print(f" Events     : {dict(info['event_counts'])}")
+                            print("------------------------------------------------")
 
         print(f"\n[*] Sleeping {SCAN_INTERVAL_SECONDS} seconds...\n")
         time.sleep(SCAN_INTERVAL_SECONDS)
 
-#  entry 
+# ===================== ENTRY =====================
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
         print("\n[!] Controller stopped cleanly.")
+
