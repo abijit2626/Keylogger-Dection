@@ -5,7 +5,6 @@ from collections import defaultdict
 SNAPSHOT_DIR = "snapshots"
 OUTPUT_FILE = "temporal_events.json"
 
-print("[DEBUG] TEMPORAL ANALYZER FILE:", __file__)
 
 def load_snapshots():
     files = sorted(f for f in os.listdir(SNAPSHOT_DIR) if f.endswith(".json"))
@@ -44,12 +43,12 @@ def analyze():
 
     events = []
 
-    # Emit ONLY change events
+    # Emit ONLY behavioral changes
     for identity, records in history.items():
         for i in range(1, len(records)):
             prev, curr = records[i - 1], records[i]
 
-            # First appearance of hook capability
+            # Hook capability appears
             if not prev["dlls"] and curr["dlls"]:
                 events.append({
                     "event": "HOOK_APPEARED",
@@ -59,7 +58,7 @@ def analyze():
                     "time": curr["time"]
                 })
 
-            # New hook carrier introduced
+            # New hook carrier added
             new = curr["dlls"] - prev["dlls"]
             if new:
                 events.append({
