@@ -5,7 +5,7 @@ import os
 STATE_FILE = "temporal_state.json"
 
 # ===================== CONFIG =====================
-
+print("[DEBUG] temporal_risk_engine LOADED FROM:", __file__)
 EVENT_WEIGHTS = {
     "HOOK_APPEARED": 8,
     "NEW_HOOK_MODULE": 30,
