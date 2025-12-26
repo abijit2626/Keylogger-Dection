@@ -14,7 +14,7 @@ def load_snapshots():
 
     snapshots = []
     for f in files:
-        with open(os.path.join(SNAPSHOT_DIR, f), "r") as fp:
+        with open(os.path.join(SNAPSHOT_DIR, f), "r", encoding="utf-8") as fp:
             snapshots.append({
                 "time": f,
                 "data": json.load(fp)
@@ -25,20 +25,28 @@ def load_snapshots():
 def index_hooks(snapshot):
     """
     Returns:
-      { pid: set(hook_owners) }
+      { identity: { dlls, pid, exe } }
+    Identity = exe_path + create_time
     """
     hooks = {}
 
     for entry in snapshot.get("keyboard_hook_suspects", []):
         pid = entry["pid"]
+        exe = entry.get("executable", "UNKNOWN_EXE")
+        create_time = entry.get("create_time", "UNKNOWN_TIME")
+
+        identity = f"{exe}|{create_time}"
 
         if "suspicious_modules" in entry:
             dlls = {m["dll"] for m in entry["suspicious_modules"]}
         else:
-            exe = entry.get("executable")
-            dlls = {exe} if exe else set()
+            dlls = {exe}
 
-        hooks[pid] = dlls
+        hooks[identity] = {
+            "dlls": dlls,
+            "pid": pid,
+            "exe": exe
+        }
 
     return hooks
 
@@ -51,59 +59,68 @@ def analyze():
 
     history = defaultdict(list)
 
-    # Build time series
+    # Build time series by identity
     for snap in snapshots:
         hook_map = index_hooks(snap["data"])
-        for pid, dlls in hook_map.items():
-            history[pid].append({
+        for identity, info in hook_map.items():
+            history[identity].append({
                 "time": snap["time"],
-                "dlls": dlls
+                "dlls": info["dlls"],
+                "pid": info["pid"],
+                "exe": info["exe"]
             })
 
     events = []
 
-    for pid, records in history.items():
+    for identity, records in history.items():
         if len(records) < 2:
             continue
 
-        # ---- persistence (STATE, emit once) ----
+        latest = records[-1]
+
+        # ---- PERSISTENCE (STATE, ONCE PER RUN) ----
         events.append({
             "event": "HOOK_PERSISTED",
-            "pid": pid,
-            "time": records[-1]["time"],
-            "dlls": list(records[-1]["dlls"])
+            "identity": identity,
+            "pid": latest["pid"],
+            "exe": latest["exe"],
+            "time": latest["time"],
+            "dlls": list(latest["dlls"])
         })
 
-        # ---- change detection (EVENTS) ----
+        # ---- CHANGE EVENTS ----
         for i in range(1, len(records)):
             prev = records[i - 1]
             curr = records[i]
 
-            # Hook appeared
             if not prev["dlls"] and curr["dlls"]:
                 events.append({
                     "event": "HOOK_APPEARED",
-                    "pid": pid,
+                    "identity": identity,
+                    "pid": curr["pid"],
+                    "exe": curr["exe"],
                     "time": curr["time"],
                     "dlls": list(curr["dlls"])
                 })
 
-            # New DLL added
             new_dlls = curr["dlls"] - prev["dlls"]
             if new_dlls:
                 events.append({
                     "event": "NEW_HOOK_MODULE",
-                    "pid": pid,
+                    "identity": identity,
+                    "pid": curr["pid"],
+                    "exe": curr["exe"],
                     "time": curr["time"],
                     "dlls": list(new_dlls)
                 })
 
-            # Hook removed
             removed = prev["dlls"] - curr["dlls"]
             if removed:
                 events.append({
                     "event": "HOOK_REMOVED",
-                    "pid": pid,
+                    "identity": identity,
+                    "pid": curr["pid"],
+                    "exe": curr["exe"],
                     "time": curr["time"],
                     "dlls": list(removed)
                 })
@@ -113,7 +130,7 @@ def analyze():
 
     print("\n========== TEMPORAL KEYBOARD HOOK REPORT ==========\n")
     for e in events:
-        print(f"[{e['event']}] PID {e['pid']} @ {e['time']}")
+        print(f"[{e['event']}] {e['exe']} @ {e['time']}")
         for d in e["dlls"]:
             print(f"  - {d}")
         print()
@@ -124,4 +141,3 @@ def analyze():
 
 if __name__ == "__main__":
     analyze()
-
