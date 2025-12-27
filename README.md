@@ -1,139 +1,144 @@
-# 🔐 Keylogger Detection (Behavioral, User-Mode)
+# Keyboard Hook Behavioral Detector (Windows)
 
 ## Overview
 
-This project is a **Windows user-mode behavioral scanner** designed to identify **processes capable of installing keyboard hooks** — a technique commonly used by keyloggers, accessibility tools, hotkey managers, and some malware.
+This project is a **Windows user-mode behavioral monitoring tool** designed to identify **processes capable of installing keyboard hooks** and to **evaluate their risk over time** using contextual and temporal analysis.
 
-Instead of using unsafe or invasive techniques (kernel drivers, live API hooking, code injection), the tool focuses on **capability detection combined with temporal behavior analysis**, similar to early-stage **Endpoint Detection & Response (EDR)** systems.
+It does **not** attempt to intercept keystrokes, inject code, or operate at kernel level.  
+Instead, it focuses on **capability detection, behavior observation, and risk persistence** — similar in spirit to modern EDR telemetry agents.
 
-⚠️ **This is not a malware classifier.**  
-It is a **precondition and behavior detector**.
-
----
-
-## 🧠 Detection Philosophy
-
-Most keyloggers rely on Windows APIs such as:
-
-- `SetWindowsHookEx`
-- `WH_KEYBOARD` / `WH_KEYBOARD_LL`
-- `user32.dll` input interception
-
-This tool answers the question:
-
-> **Which processes can hook the keyboard, and do they persist over time?**
-
-Rather than attempting to intercept keystrokes, it identifies **processes with the capability and behavior patterns required to do so**.
+⚠️ This is **not a malware classifier**.  
+It is a **behavioral risk assessment tool**.
 
 ---
 
-## 🔍 Detection Signals
+## Design Philosophy
 
-Detection is based on the following signals:
+Traditional security tools often fail by making immediate judgments based on single observations.
+
+This project follows a different philosophy:
+
+> **Detect capability → observe behavior → escalate only if patterns persist**
+
+Key principles:
+- Capability does not imply malicious intent
+- Persistence amplifies risk, it does not create it
+- Trusted software must not generate noise
+- Decisions must be explainable
+
+---
+
+## What This Tool Detects
+
+The scanner identifies **keyboard-hook-capable processes** by observing:
 
 - Use of `user32.dll`
-- Presence of **user-space DLLs or executables**
-- Digital signature verification (signed vs unsigned)
-- Process location (system directory vs user space)
-- Persistence across multiple scan cycles
+- Presence of non-Windows DLLs
+- Executables running outside system directories
+- Digital signature status
+- Execution context (user space vs system space)
 
-Processes are classified as **suspects**, not threats.
+Processes are classified as:
+- `EXE_HOOK_SUSPECT`
+- `DLL_HOOK_SUSPECT`
 
----
-
-## 🏗️ Architecture
-```
-Keylogger-Dection/
-├── scanner/
-│ ├── scanner.py # Orchestrates one scan cycle
-│ ├── keyboard_hook_detector.py # Core hook-capability detection
-│ ├── temporal_analyzer.py # Time-based behavior correlation
-│ ├── temporal_risk_engine.py
-│ └── init.py
-│
-├── snapshots/ # Scan snapshots (JSON)
-├── temporal_events.json # Derived behavioral events
-├── main_controller.py # Periodic scanning controller
-└── README.md
-```
----
-
-## 🧪 Detection Categories
-
-Each scan produces a snapshot containing **keyboard hook suspects**, categorized as:
-
-### 1️⃣ EXE_HOOK_SUSPECT
-
-Processes that:
-- Load `user32.dll`
-- Run from **user-space** (not `C:\Windows`)
-- May implement keyboard hooks internally
-
-Examples:
-- AutoHotkey
-- Electron-based apps (Discord, Signal)
-- Accessibility tools
+These are **capability labels**, not verdicts.
 
 ---
 
-### 2️⃣ DLL_HOOK_SUSPECT
+## False Positives (Expected and Handled)
 
-Processes that:
-- Load `user32.dll`
-- Also load **non-Windows DLLs**
-- May install hooks via injected or bundled libraries
-
----
-
-## ⏱️ Temporal Analysis
-
-The temporal analyzer correlates multiple scan snapshots over time to identify:
-
-- Hook appearance
-- Hook persistence
-- New hook owners
-- Changes in signed vs unsigned components
-
-This reduces noise and helps distinguish:
-
-- Transient legitimate behavior
-- Persistent suspicious behavior
-
----
-
-## ⚠️ Expected False Positives
-
-Some legitimate applications will appear as hook-capable suspects, including:
+Many legitimate applications use keyboard hooks, including:
 
 - Discord
 - Signal
-- Wallpaper engines
-- Hotkey managers
-- Accessibility software
+- Browsers
+- Accessibility tools
+- Automation utilities
 
-This is **expected and correct behavior**.
+This is expected behavior.
 
-False positives are addressed through **temporal correlation and refinement**, not aggressive detection.
+False positives are reduced using:
+- Risk scoring (LOW / MEDIUM / HIGH)
+- Allowlisting of trusted software
+- Temporal persistence gating
+- Risk decay over time
+
+A process must demonstrate **both suspicion and persistence** to escalate.
 
 ---
 
-## 🛡️ Safety & Ethics
+## Architecture
+```
+project-root/
+├── scanner/
+│ ├── scanner.py # Single scan cycle (snapshot)
+│ ├── keyboard_hook_detector.py # Capability detection + base risk
+│ ├── temporal_analyzer.py # Behavior change detection
+│ ├── temporal_risk_engine.py # Risk persistence + decay
+│ └── init.py
+│
+├── snapshots/ # Timestamped scan results
+├── temporal_state.json # Persistent risk memory
+├── main_controller.py # Scheduler / orchestrator
+└── README.md
+```
+
+
+---
+
+## How It Works (High Level)
+
+1. **Scanner**
+   - Enumerates processes
+   - Detects keyboard-hook capability
+   - Assigns base risk
+   - Writes snapshot
+
+2. **Temporal Analyzer**
+   - Compares snapshots
+   - Emits behavior change events
+
+3. **Temporal Risk Engine**
+   - Maintains long-term risk state
+   - Applies gated persistence scoring
+   - Decays risk when behavior stabilizes
+
+---
+
+## Safety & Ethics
 
 - User-mode only
 - Read-only inspection
-- No code injection
+- No API hooking
 - No keystroke capture
+- No code injection
 - No system modification
 
-This project is suitable for **learning, research, and experimentation**.
+This tool is suitable for **learning, research, and behavioral analysis**.
 
 ---
 
-## 🚀 How to Run
+## Tested Environment
 
-### Single Scan
+- Windows 10 / 11 (64-bit)
+- Python 3.10 / 3.11
+- AutoHotkey v2 (for validation)
 
-From the project root (Windows, Administrator):
+---
 
-```powershell
-python -m scanner.scanner
+## Intended Use
+
+This project is intended for:
+- Security research
+- Learning Windows internals
+- Behavioral detection experimentation
+- Portfolio / interview demonstration
+
+It is **not** intended as a drop-in security product.
+
+---
+
+## Disclaimer
+
+This software is provided for educational and research purposes only.
