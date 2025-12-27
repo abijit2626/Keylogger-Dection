@@ -86,7 +86,9 @@ def main():
 
                     high_risk_count = 0
                     for ident, s in state.items():
-                        if s["risk_level"] == "HIGH":
+                        if ident == "_meta":
+                            continue
+                        if s.get("risk_level") == "HIGH":
                             high_risk_count += 1
                             logger.critical(
                                 f"HIGH RISK DETECTED - Identity: {ident}, "
